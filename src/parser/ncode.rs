@@ -70,29 +70,28 @@ pub fn ncode(
         return url.to_string();
     }
     let mut return_url = Url::parse(url).expect("Can't parse the url");
-    let n = extract_n_from_url(&return_url);
-
-    let n = if let Some(n) = &n {
-        n.as_ref()
-    } else {
-        return url.to_string();
-    };
-
-    let n_transform_result = n_transfrom_cache
-        .get(n)
-        .cloned()
-        .unwrap_or_else(|| apply_transform(n_transform_script_string, n_transfrom_cache, n));
 
     let query = return_url
         .query_pairs()
         .map(|(name, value)| {
-            if name == "n" {
-                (name.into_owned(), n_transform_result.to_string())
-            } else {
-                (name.into_owned(), value.into_owned())
+            if name != "n" {
+                return (name.into_owned(), value.into_owned());
             }
+            (
+                name.into_owned(),
+                n_transfrom_cache
+                    .get(value.as_ref())
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        apply_transform(
+                            n_transform_script_string,
+                            n_transfrom_cache,
+                            value.as_ref(),
+                        )
+                    }),
+            )
         })
-        .collect::<Vec<(String, String)>>();
+        .collect::<Vec<_>>();
 
     return_url.query_pairs_mut().clear().extend_pairs(&query);
 
