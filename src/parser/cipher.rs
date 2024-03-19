@@ -5,7 +5,13 @@ use serde::Deserialize;
 pub struct DecipherQuery {
     url: String,
     s: String,
-    sp: Option<String>,
+    // Default value is "signature"
+    #[serde(default = "default_signature")]
+    sp: String,
+}
+
+fn default_signature() -> String {
+    "signature".into()
 }
 
 #[cfg_attr(feature = "performance_analysis", flamer::flame)]
@@ -35,6 +41,23 @@ fn create_cipher_context<'a, 'b>(script: &'a str) -> Context<'b> {
     context
 }
 
+fn get_cipher_context_and_execute(
+    decipher_script_string: &(String, String),
+    args: &DecipherQuery,
+    cipher_cache: &mut Option<(String, Context)>,
+) -> String {
+    let context = match cipher_cache {
+        Some((ref cache_key, ref mut context)) if cache_key == &decipher_script_string.1 => context,
+        _ => {
+            let context = create_cipher_context(&decipher_script_string.1);
+            *cipher_cache = Some((decipher_script_string.1.to_string(), context));
+            &mut cipher_cache.as_mut().unwrap().1
+        }
+    };
+
+    execute_script(context, decipher_script_string.0.as_str(), &args.s)
+}
+
 #[cfg_attr(feature = "performance_analysis", flamer::flame)]
 pub fn decipher(
     base_url: &str,
@@ -50,39 +73,18 @@ pub fn decipher(
         return base_url.to_string();
     };
 
-    let url = args.url;
-    let s = args.s;
-
-    let context = match cipher_cache {
-        Some((ref cache_key, ref mut context)) if cache_key == &decipher_script_string.1 => context,
-        _ => {
-            let context = create_cipher_context(&decipher_script_string.1);
-            *cipher_cache = Some((decipher_script_string.1.to_string(), context));
-            &mut cipher_cache.as_mut().unwrap().1
-        }
-    };
-
     let convert_result_to_rust_string =
-        execute_script(context, decipher_script_string.0.as_str(), &s);
+        get_cipher_context_and_execute(decipher_script_string, &args, cipher_cache);
 
-    let mut return_url = url::Url::parse(&url).expect("Can't parse the url");
+    let mut return_url = url::Url::parse(&args.url).expect("Can't parse the url");
 
-    let query_name = args.sp.unwrap_or_else(|| "signature".to_owned());
-
+    // Removes the query parameter if it exists and appends the new one
     let mut query = return_url
         .query_pairs()
-        .map(|(name, value)| {
-            if name == query_name {
-                (name.into_owned(), convert_result_to_rust_string.to_string())
-            } else {
-                (name.into_owned(), value.into_owned())
-            }
-        })
+        .filter(|(name, _)| name.as_ref() != args.sp)
+        .map(|(name, value)| (name.into_owned(), value.into_owned()))
         .collect::<Vec<(String, String)>>();
-
-    if !return_url.query_pairs().any(|(name, _)| name == query_name) {
-        query.push((query_name.to_string(), convert_result_to_rust_string));
-    }
+    query.push((args.sp, convert_result_to_rust_string));
 
     return_url.query_pairs_mut().clear().extend_pairs(&query);
 
