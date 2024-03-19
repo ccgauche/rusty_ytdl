@@ -6,11 +6,11 @@ use rusty_ytdl::*;
 async fn main() {
     let urls = [
         "https://youtube.com/watch?v=Rbgw_rduQpM",
-        "https://youtube.com/watch?v=-h6PCkfTBcc",
-        "https://youtube.com/watch?v=2SUwOgmvzK4",
-        "https://youtube.com/watch?v=9Ueulv6BugQ",
-        "https://youtube.com/watch?v=R4hDcd9fzRk",
-        "https://youtube.com/watch?v=W5Sq71VTJ9Q",
+        // "https://youtube.com/watch?v=-h6PCkfTBcc",
+        // "https://youtube.com/watch?v=2SUwOgmvzK4",
+        // "https://youtube.com/watch?v=9Ueulv6BugQ",
+        // "https://youtube.com/watch?v=R4hDcd9fzRk",
+        // "https://youtube.com/watch?v=W5Sq71VTJ9Q",
     ];
 
     let instant = std::time::Instant::now();

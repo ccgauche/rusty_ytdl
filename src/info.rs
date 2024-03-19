@@ -8,6 +8,7 @@ use scraper::{Html, Selector};
 
 use crate::constants::{BASE_URL, FORMATS};
 use crate::info_extras::{get_media, get_related_videos};
+use crate::parser::parse_video_formats;
 #[cfg(feature = "live")]
 use crate::stream::{LiveStream, LiveStreamOptions};
 use crate::stream::{NonLiveStream, NonLiveStreamOptions, Stream};
@@ -20,7 +21,7 @@ use crate::structs::FFmpegArgs;
 use crate::utils::{
     add_format_meta, between, choose_format, clean_video_details, get_functions, get_html,
     get_html5player, get_random_v6_ip, get_video_id, is_not_yet_broadcasted, is_play_error,
-    is_private_video, is_rental, parse_video_formats, sort_formats,
+    is_private_video, is_rental, sort_formats,
 };
 
 #[derive(Clone, derive_more::Display, derivative::Derivative)]

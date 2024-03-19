@@ -13,6 +13,7 @@ mod info;
 mod info_extras;
 mod structs;
 mod utils;
+mod parser;
 
 pub mod constants;
 pub mod stream;
