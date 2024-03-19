@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use boa_engine::{Context, JsValue, Source};
 use url::Url;
@@ -32,6 +32,34 @@ fn execute_transform_script(
         .unwrap()
 }
 
+fn extract_n_from_url(url: &Url) -> Option<Cow<str>> {
+    url.query_pairs()
+        .find(|(name, _)| name == "n")
+        .map(|(_, v)| v)
+}
+
+fn apply_transform(
+    n_transform_script_string: &(String, String),
+    n_transfrom_cache: &mut HashMap<String, String>,
+    n: &str,
+) -> String {
+    let mut context = create_transform_script(n_transform_script_string.1.as_str());
+
+    let is_result_string =
+        execute_transform_script(&mut context, n_transform_script_string.0.as_str(), &n);
+
+    let is_result_string = is_result_string
+        .as_string()
+        .expect("Can't convert to string");
+    let convert_result_to_rust_string = is_result_string
+        .to_std_string()
+        .expect("Can't convert to string");
+
+    n_transfrom_cache.insert(n.to_owned(), convert_result_to_rust_string.clone());
+
+    convert_result_to_rust_string
+}
+
 #[cfg_attr(feature = "performance_analysis", flamer::flame)]
 pub fn ncode(
     url: &str,
@@ -42,7 +70,7 @@ pub fn ncode(
         return url.to_string();
     }
     let mut return_url = Url::parse(url).expect("Can't parse the url");
-    let n = return_url.query_pairs().find(|(name, _)| name == "n").map(|(_,v)| v);
+    let n = extract_n_from_url(&return_url);
 
     let n = if let Some(n) = &n {
         n.as_ref()
@@ -50,35 +78,10 @@ pub fn ncode(
         return url.to_string();
     };
 
-    let n_transform_result = if let Some(&result) = n_transfrom_cache.get(n).as_ref() {
-        result.clone()
-    } else {
-        let mut context = create_transform_script(n_transform_script_string.1.as_str());
-
-        let is_result_string = execute_transform_script(
-            &mut context,
-            n_transform_script_string.0.as_str(),
-            &n,
-        );
-
-        let is_result_string = is_result_string.as_string();
-
-        if is_result_string.is_none() {
-            return url.to_string();
-        }
-
-        let convert_result_to_rust_string = is_result_string.unwrap().to_std_string();
-
-        if convert_result_to_rust_string.is_err() {
-            return url.to_string();
-        }
-
-        let result = convert_result_to_rust_string.unwrap();
-
-        n_transfrom_cache.insert(n.to_owned(), result.clone());
-
-        result
-    };
+    let n_transform_result = n_transfrom_cache
+        .get(n)
+        .cloned()
+        .unwrap_or_else(|| apply_transform(n_transform_script_string, n_transfrom_cache, n));
 
     let query = return_url
         .query_pairs()
