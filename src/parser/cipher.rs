@@ -14,6 +14,28 @@ fn decode_url(url: &str) -> Option<DecipherQuery> {
 }
 
 #[cfg_attr(feature = "performance_analysis", flamer::flame)]
+fn execute_script(context: &mut Context, func_name: &str, s: &str) -> String {
+    context
+        .eval(boa_engine::Source::from_bytes(&format!(
+            r#"{func_name}("{s}")"#
+        )))
+        .expect("Can't execute script")
+        .as_string()
+        .expect("Can't convert to string")
+        .to_std_string()
+        .expect("Can't convert to string")
+}
+
+#[cfg_attr(feature = "performance_analysis", flamer::flame)]
+fn create_cipher_context<'a, 'b>(script: &'a str) -> Context<'b> {
+    let mut context = boa_engine::Context::default();
+    context
+        .eval(boa_engine::Source::from_bytes(script))
+        .expect("Can't execute script");
+    context
+}
+
+#[cfg_attr(feature = "performance_analysis", flamer::flame)]
 pub fn decipher(
     base_url: &str,
     decipher_script_string: &(String, String),
@@ -34,37 +56,14 @@ pub fn decipher(
     let context = match cipher_cache {
         Some((ref cache_key, ref mut context)) if cache_key == &decipher_script_string.1 => context,
         _ => {
-            #[cfg(feature = "performance_analysis")]
-            let _guard = flame::start_guard("build engine");
-            let mut context = boa_engine::Context::default();
-            let decipher_script = context.eval(boa_engine::Source::from_bytes(
-                decipher_script_string.1.as_str(),
-            ));
-            if decipher_script.is_err() {
-                return url;
-            }
+            let context = create_cipher_context(&decipher_script_string.1);
             *cipher_cache = Some((decipher_script_string.1.to_string(), context));
             &mut cipher_cache.as_mut().unwrap().1
         }
     };
 
-    let result = {
-        #[cfg(feature = "performance_analysis")]
-        let _guard = flame::start_guard("execute engine");
-        context
-            .eval(boa_engine::Source::from_bytes(&format!(
-                r#"{func_name}("{args}")"#,
-                func_name = decipher_script_string.0.as_str(),
-                args = s
-            )))
-            .expect("Can't execute script")
-    };
-
-    let convert_result_to_rust_string = result
-        .as_string()
-        .expect("Can't convert to string")
-        .to_std_string()
-        .expect("Can't convert to string");
+    let convert_result_to_rust_string =
+        execute_script(context, decipher_script_string.0.as_str(), &s);
 
     let mut return_url = url::Url::parse(&url).expect("Can't parse the url");
 
