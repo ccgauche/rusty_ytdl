@@ -36,7 +36,7 @@ pub fn parse_video_formats(
             format.as_object_mut().map(|x| {
                 let new_url = set_download_url(
                     &parsed,
-                    format_functions.clone(),
+                    &format_functions,
                     &mut n_transform_cache,
                     &mut cipher_cache,
                 );
@@ -86,30 +86,25 @@ pub struct SetDownloadURLValue {
 #[cfg_attr(feature = "performance_analysis", flamer::flame)]
 pub fn set_download_url(
     format: &SetDownloadURLValue,
-    functions: Vec<(String, String)>,
+    functions: &[(String, String)],
     n_transform_cache: &mut HashMap<String, String>,
     cipher_cache: &mut Option<(String, Context)>,
 ) -> String {
-
     let empty_script = ("".to_string(), "".to_string());
     let decipher_script_string = functions.first().unwrap_or(&empty_script);
     let n_transform_script_string = functions.get(1).unwrap_or(&empty_script);
 
-    let cipher = format.url.is_none();
-    let url = format.url.clone().unwrap_or(
-        format
-            .signature_cipher
-            .clone()
-            .unwrap_or(format.cipher.clone().unwrap_or_default()),
-    );
-
-    if cipher {
-        ncode::ncode(
-            cipher::decipher(&url, decipher_script_string, cipher_cache).as_str(),
-            n_transform_script_string,
-            n_transform_cache,
-        )
-    } else {
-        ncode::ncode(&url, n_transform_script_string, n_transform_cache)
-    }
+    ncode::ncode(
+        &if let Some(url) = &format.url {
+            url.clone()
+        } else {
+            let url = format
+                .signature_cipher
+                .clone()
+                .unwrap_or(format.cipher.clone().unwrap_or_default());
+            cipher::decipher(&url, decipher_script_string, cipher_cache)
+        },
+        n_transform_script_string,
+        n_transform_cache,
+    )
 }
