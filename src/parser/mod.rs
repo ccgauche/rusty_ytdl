@@ -2,13 +2,13 @@ use std::collections::HashMap;
 
 use boa_engine::{Context, JsValue, Source};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use urlencoding::decode;
 
 use crate::{utils::add_format_meta, VideoFormat};
 
-mod ncode;
 mod cipher;
-
+mod ncode;
 
 #[cfg_attr(feature = "performance_analysis", flamer::flame)]
 pub fn parse_video_formats(
@@ -32,9 +32,10 @@ pub fn parse_video_formats(
 
         let mut cipher_cache: Option<(String, Context)> = None;
         for format in &mut formats {
+            let parsed: SetDownloadURLValue = serde_json::from_value(format.clone()).unwrap();
             format.as_object_mut().map(|x| {
                 let new_url = set_download_url(
-                    &mut serde_json::json!(x),
+                    &parsed,
                     format_functions.clone(),
                     &mut n_transform_cache,
                     &mut cipher_cache,
@@ -44,7 +45,7 @@ pub fn parse_video_formats(
                 x.remove("signatureCipher");
                 x.remove("cipher");
 
-                x.insert("url".to_string(), new_url);
+                x.insert("url".to_string(), Value::String(new_url));
 
                 // Add Video metaData
                 add_format_meta(x);
@@ -74,68 +75,41 @@ pub fn parse_video_formats(
     }
 }
 
+#[derive(Deserialize)]
+pub struct SetDownloadURLValue {
+    url: Option<String>,
+    #[serde(rename = "signatureCipher")]
+    signature_cipher: Option<String>,
+    cipher: Option<String>,
+}
+
 #[cfg_attr(feature = "performance_analysis", flamer::flame)]
 pub fn set_download_url(
-    format: &mut serde_json::Value,
+    format: &SetDownloadURLValue,
     functions: Vec<(String, String)>,
     n_transform_cache: &mut HashMap<String, String>,
     cipher_cache: &mut Option<(String, Context)>,
-) -> serde_json::Value {
-    let empty_string_serde_value = serde_json::json!("");
-    #[derive(Debug, Deserialize, PartialEq, Serialize)]
-    struct Query {
-        n: String,
-        url: String,
-        s: String,
-        sp: String,
-    }
+) -> String {
 
     let empty_script = ("".to_string(), "".to_string());
     let decipher_script_string = functions.first().unwrap_or(&empty_script);
     let n_transform_script_string = functions.get(1).unwrap_or(&empty_script);
 
-    let return_format = format.as_object_mut().unwrap();
-
-    let cipher = return_format.get("url").is_none();
-    let url = return_format
-        .get("url")
-        .unwrap_or(
-            return_format.get("signatureCipher").unwrap_or(
-                return_format
-                    .get("cipher")
-                    .unwrap_or(&empty_string_serde_value),
-            ),
-        )
-        .as_str()
-        .unwrap_or("");
+    let cipher = format.url.is_none();
+    let url = format.url.clone().unwrap_or(
+        format
+            .signature_cipher
+            .clone()
+            .unwrap_or(format.cipher.clone().unwrap_or_default()),
+    );
 
     if cipher {
-        return_format.insert(
-            "url".to_string(),
-            serde_json::json!(&ncode::ncode(
-                cipher::decipher(url, decipher_script_string, cipher_cache).as_str(),
-                n_transform_script_string,
-                n_transform_cache
-            )),
-        );
+        ncode::ncode(
+            cipher::decipher(&url, decipher_script_string, cipher_cache).as_str(),
+            n_transform_script_string,
+            n_transform_cache,
+        )
     } else {
-        return_format.insert(
-            "url".to_string(),
-            serde_json::json!(&ncode::ncode(url, n_transform_script_string, n_transform_cache)),
-        );
+        ncode::ncode(&url, n_transform_script_string, n_transform_cache)
     }
-
-    // Delete unnecessary cipher, signatureCipher
-    return_format.remove("signatureCipher");
-    return_format.remove("cipher");
-
-    let return_url = url::Url::parse(
-        return_format
-            .get("url")
-            .and_then(|x| x.as_str())
-            .unwrap_or(""),
-    )
-    .unwrap();
-
-    serde_json::json!(return_url.to_string())
 }
